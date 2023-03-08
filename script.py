@@ -3,8 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 import networkx as nx
-from ast import literal_eval as make_tuple
 import os
+import sys
+
+#check for arguments
+if len(sys.argv) < 2:
+    print("Usage: python script.py 'path_to_ampl'")
+    sys.exit(1)
+else:
+    path_to_ampl = sys.argv[1]
+
+data_name = 'wf02_cb01_capex'
+    
 
 def plot_cable_layout(x_pd, pos, deterministic_cost=None, name='cable_layout.png'):
     size = (1+np.sqrt(1+4*len(x_pd)))/2
@@ -36,70 +46,15 @@ def plot_cable_layout(x_pd, pos, deterministic_cost=None, name='cable_layout.png
     #tight layout
     plt.tight_layout()
     #save figure
-    #plt.show()
     plt.savefig(name)
 
-def plot_multiple_cable_layouts(x_pd, pos, deterministic_cost=None, perturbation=False, x_pd2=None, P_deviation_pd=None):
-    size = (1+np.sqrt(1+4*len(x_pd)))/2
-    size = int(size)
-    print("size of matrix: ", size)
-    G2 = nx.Graph()
-    for i in range(len(x_pd)):
-        if int(x_pd.iloc[i][0])==1:
-            idx_1 = int(x_pd.index[i][0]) - 1
-            idx_2 = int(x_pd.index[i][1]) - 1
-            cableType = int(x_pd.index[i][2])
-            G2.add_edge(idx_1, idx_2, color='C'+str(cableType-1))
-
-
-    #figure with legend
-    fig = plt.figure()
-    k = 1+len(x_pd2)//len(x_pd)
-    # k graphs to plot
-    nrow = int(np.ceil(np.sqrt(k)))
-    ncol = int(np.ceil(k/nrow))
-    ax = fig.add_subplot(nrow, ncol, 1)
-    for cableType in range(1,4):
-        ax.scatter([], [], c='C'+str(cableType-1), label='cable type '+str(cableType))
-
-
-    #plot matrix as a graph with color
-    nx.draw_networkx(G2, pos=pos, node_size=60,  with_labels=False, edge_color=[G2[u][v]['color'] for u,v in G2.edges()], ax=ax)
-
-    #add title
-    if deterministic_cost is not None:
-        plt.title('Cable layout with deterministic cost: '+str(deterministic_cost))
-
-    plt.legend()
-
-    #add new subplot for each scenario
-    for i in range(len(x_pd2)//len(x_pd)):
-        ax = fig.add_subplot(nrow, ncol, i+2)
-        G_new = G2.copy()
-        new_cables_count = 0
-        for j in range(len(x_pd)):
-            if int(x_pd2.iloc[i*len(x_pd)+j][0])==1:
-                new_cables_count += 1
-                idx_1 = int(x_pd2.index[i*len(x_pd)+j][0]) - 1
-                idx_2 = int(x_pd2.index[i*len(x_pd)+j][1]) - 1
-                cableType = int(x_pd2.index[i*len(x_pd)+j][2])
-                G_new.add_edge(idx_1, idx_2, color='r')
-
-        nx.draw_networkx(G_new, pos=pos, node_size=60, with_labels=False, edge_color=[G_new[u][v]['color'] for u,v in G_new.edges()], ax=ax)
-        plt.title('Scenario '+str(i+1)+' with '+str(new_cables_count)+' new cables')
-        for cableType in range(1,4):
-            ax.scatter([], [], c='C'+str(cableType-1), label='cable type '+str(cableType))
-        ax.scatter([], [], c='r', label='new cable')
-        plt.legend()
-        plt.tight_layout()
-    
-    plt.show()
-
-ampl = AMPL(Environment(r'/Users/virgilefoussereau/Documents/ampl_macos64'))
+#transform path_to_ampl as raw string
+path_to_ampl = r'{}'.format(path_to_ampl)
+ampl = AMPL(Environment(path_to_ampl))
 ampl.reset()
 
 ampl.read('cable_optimization_stochastic.mod')
-ampl.readData('wf02_cb01_capex.dat')
+ampl.readData(data_name+'.dat')
 
 #get set VxW
 VxW_pd = ampl.getSet('VxW').getValues().toPandas()
@@ -110,8 +65,6 @@ P_deviation_pd = P_deviation_pd.clip(lower=-0.5, upper=0.5)
 
 ampl.getParameter('P_deviation').setValues(P_deviation_pd)
 
-# ampl.getObjective('of_pessimistic').drop()
-
 ampl.setOption('solver', 'cplex')
 ampl.setOption('cplex_options', 'timelimit=3600 iisfind 1')
 
@@ -121,11 +74,12 @@ print('Results with deterministic solution')
 print('')
 
 #load deterministic solution from csv
-if os.path.isfile('deterministic_solution.csv'):
+solution_path = 'deterministic_solution_'+data_name+'.csv'
+if os.path.isfile(solution_path):
     x_pd = ampl.getVariable('x').getValues().toPandas()
     index_x_pd = x_pd.index
     index_x_pd = x_pd.index
-    x_pd = pd.read_csv('deterministic_solution.csv', index_col=0)
+    x_pd = pd.read_csv(solution_path, index_col=0)
     x_pd.index = index_x_pd
     # set values of ampl variable x
     ampl.getVariable('x').setValues(x_pd)
@@ -168,7 +122,7 @@ for i in range(len(x_coord)):
 
 x_pd = ampl.getVariable('x').getValues().toPandas()
 
-plot_cable_layout(x_pd, pos, deterministic_cost_readable, "deterministic_solution_30_scenarios.png")
+plot_cable_layout(x_pd, pos, deterministic_cost_readable, "deterministic_solution_cable_routing.png")
 
 ####################### Results with tradeoff solution
 print('')
@@ -210,7 +164,7 @@ with open('results.txt', 'a') as f:
 
 x_pd = ampl.getVariable('x').getValues().toPandas()
 
-plot_cable_layout(x_pd, pos, deterministic_cost_readable, "tradeoff_solution_30_scenarios.png")
+plot_cable_layout(x_pd, pos, deterministic_cost_readable, "tradeoff_solution_cable_routing.png")
 
 ####################### Results with pessimistic solution
 print('')
@@ -253,7 +207,7 @@ with open('results.txt', 'a') as f:
 
 x_pd = ampl.getVariable('x').getValues().toPandas()
 
-plot_cable_layout(x_pd, pos, deterministic_cost_readable, "pessimistic_solution_30_scenarios.png")
+plot_cable_layout(x_pd, pos, deterministic_cost_readable, "pessimistic_solution_cable_routing.png")
 
 #close ampl
 ampl.close()

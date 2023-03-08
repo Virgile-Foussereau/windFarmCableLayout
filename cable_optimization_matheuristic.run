@@ -1,0 +1,50 @@
+option solver cplex;
+
+# Run the solver with time limit 30 seconds
+option cplex_options 'timelimit=30';
+
+param best_of default Infinity;
+param best_f{(i,j) in A};
+param best_x{(i,j) in A, t in T};
+param best_y{(i,j) in A};
+
+for {iter in 1..10} {
+  solve;
+  printf "#####################################################################\n";
+  printf "##   Iteration %d, of = %f, best_of = %f   ##\n", iter, of, best_of;
+  printf "#####################################################################\n"; 
+  if of < best_of then {
+    let best_of := of;
+    let {(i,j) in A, t in T} best_x[i,j,t] := x[i,j,t];
+    let {(i,j) in A} best_y[i,j] := y[i,j];
+    let {(i,j) in A} best_f[i,j] := f[i,j];
+    printf "\n ******* Iteration %d, updated best_of = %f\n\n", iter, best_of;
+  }
+  unfix y;
+  let {(i,j) in A, t in T} x[i,j,t] := best_x[i,j,t];
+  let {(i,j) in A} y[i,j] := best_y[i,j];
+  let {(i,j) in A} f[i,j] := best_f[i,j];
+  # RANDOM strategy
+  for {(i,j) in A: best_y[i,j]==1} {
+    if Uniform(0,1) <= 0.5 then {
+      fix y[i,j] := 1;
+    }
+  }
+}
+
+printf "\n#####################################################################\n";
+printf "#####                      Out of the cycle                     #####\n";
+printf "#####################################################################\n\n";
+# provide to the solver the best solution found so far as a starting point
+unfix y;
+let {(i,j) in A, t in T} x[i,j,t] := best_x[i,j,t];
+let {(i,j) in A} y[i,j] := best_y[i,j];
+let {(i,j) in A} f[i,j] := best_f[i,j];
+
+# Run the solver with time limit 3600 seconds (1 hours)
+option cplex_options 'timelimit=3600';
+solve;
+
+display of;
+
+
